@@ -44,7 +44,6 @@ then
         gzip -c > ${AUTOMATED_BUILD_GZIP}
 EOF
 
-    #ssh ${FS_SSH_USER}@${FILESERVER} "zcat /var/log/${CLUSTER_LOGFILE}.1.gz | cat - /var/log/${CLUSTER_LOGFILE} | awk '/ ${BUILD_STRING}: Build ${SOURCE_VERSION_ESCAPED} \(${BUILD_NUMBER}\) start FLAVOR=pentos/,/ ${BUILD_STRING}: Build ${RELEASE_VERSION_ESCAPED} \(${BUILD_NUMBER}\) finish$/' | gzip -c > ${AUTOMATED_BUILD_GZIP}"
 else
     RESULTS_LOG="functional-test-${RELEASE_VERSION}-testid-${BUILD_NUMBER}"
     TEACUP_ARTIFACTS_DIR="teacup-artifacts-${RELEASE_VERSION}-testid-${BUILD_NUMBER}"
