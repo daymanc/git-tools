@@ -5,7 +5,6 @@ set -e
 set -o pipefail
 
 JENKINS_CLUSTER="20"
-FILESERVER="smurf"
 
 if [ -z "${FILESERVER}" -o -z "${FS_SSH_USER}" -o -z "${RELEASE_VERSION}" -o -z "${GITHUB_OWNER}" -o -z "${GITHUB_BRANCH}" -o -z "${BUILD_NUMBER}" -o -z "${WORKSPACE}" ]
 then
@@ -37,23 +36,22 @@ then
     echo "NOTE: This was an Upgrade test."
     RESULTS_LOG="upgrade-test-${SOURCE_VERSION}-to-${RELEASE_VERSION}-testid-${BUILD_NUMBER}"
     TEACUP_ARTIFACTS_DIR="teacup-artifacts-${SOURCE_VERSION}-to-${RELEASE_VERSION}-testid-${BUILD_NUMBER}"
-    ssh ${FS_SSH_USER}@${FILESERVER} << EOF
-        zcat /var/log/${CLUSTER_LOGFILE}.1.gz |
-        cat - /var/log/${CLUSTER_LOGFILE} |
-        awk '/ ${BUILD_STRING}: Build ${SOURCE_VERSION_ESCAPED} \(${BUILD_NUMBER}\) start FLAVOR=pentos/,/ ${BUILD_STRING}: Build ${RELEASE_VERSION_ESCAPED} \(${BUILD_NUMBER}\) finish$/' |
-        gzip -c > ${AUTOMATED_BUILD_GZIP}
-EOF
+
+    ssh ${FS_SSH_USER}@${FILESERVER} " \
+        zcat /var/log/${CLUSTER_LOGFILE}.1.gz | \
+        cat - /var/log/${CLUSTER_LOGFILE} | \
+        awk '/ ${BUILD_STRING}: Build ${SOURCE_VERSION_ESCAPED} \(${BUILD_NUMBER}\) start FLAVOR=pentos/,/ ${BUILD_STRING}: Build ${RELEASE_VERSION_ESCAPED} \(${BUILD_NUMBER}\) finish$/' | \
+        gzip -c > ${AUTOMATED_BUILD_GZIP} "
 
 else
     RESULTS_LOG="functional-test-${RELEASE_VERSION}-testid-${BUILD_NUMBER}"
     TEACUP_ARTIFACTS_DIR="teacup-artifacts-${RELEASE_VERSION}-testid-${BUILD_NUMBER}"
 
-    ssh ${FS_SSH_USER}@${FILESERVER} << EOF
-        zcat /var/log/${CLUSTER_LOGFILE}.1.gz |
-        cat - /var/log/${CLUSTER_LOGFILE} |
-        awk '/ ${BUILD_STRING}: Build ${RELEASE_VERSION_ESCAPED} \(${BUILD_NUMBER}\) start/,/ ${BUILD_STRING}: Build ${RELEASE_VERSION_ESCAPED} \(${BUILD_NUMBER}\) finish$/' |
-        gzip -c > ${AUTOMATED_BUILD_GZIP}"
-EOF
+    ssh ${FS_SSH_USER}@${FILESERVER} " \
+        zcat /var/log/${CLUSTER_LOGFILE}.1.gz | \
+        cat - /var/log/${CLUSTER_LOGFILE} | \
+        awk '/ ${BUILD_STRING}: Build ${RELEASE_VERSION_ESCAPED} \(${BUILD_NUMBER}\) start/,/ ${BUILD_STRING}: Build ${RELEASE_VERSION_ESCAPED} \(${BUILD_NUMBER}\) finish$/' | \
+        gzip -c > ${AUTOMATED_BUILD_GZIP} "
 fi
 
 # TODO(NB) Try and do this in one step, the above command should be able to copy it directly, but ssh -A isn't working for some reason.
