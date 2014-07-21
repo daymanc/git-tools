@@ -37,12 +37,10 @@ then
     RESULTS_LOG="upgrade-test-${SOURCE_VERSION}-to-${RELEASE_VERSION}-testid-${BUILD_NUMBER}"
     TEACUP_ARTIFACTS_DIR="teacup-artifacts-${SOURCE_VERSION}-to-${RELEASE_VERSION}-testid-${BUILD_NUMBER}"
     AWK="awk '/ ${BUILD_STRING}: Build ${SOURCE_VERSION_ESCAPED} \(${BUILD_NUMBER}\) start FLAVOR=pentos/,/ ${BUILD_STRING}: Build ${RELEASE_VERSION_ESCAPED} \(${BUILD_NUMBER}\) finish$/'"
-    # awk '/ ${BUILD_STRING}: Build ${SOURCE_VERSION_ESCAPED} \(${BUILD_NUMBER}\) start FLAVOR=pentos/,/ ${BUILD_STRING}: Build ${RELEASE_VERSION_ESCAPED} \(${BUILD_NUMBER}\) finish$/' | \
 else
     RESULTS_LOG="functional-test-${RELEASE_VERSION}-testid-${BUILD_NUMBER}"
     TEACUP_ARTIFACTS_DIR="teacup-artifacts-${RELEASE_VERSION}-testid-${BUILD_NUMBER}"
     AWK="awk '/ ${BUILD_STRING}: Build ${RELEASE_VERSION_ESCAPED} \(${BUILD_NUMBER}\) start/,/ ${BUILD_STRING}: Build ${RELEASE_VERSION_ESCAPED} \(${BUILD_NUMBER}\) finish$/'"
-    # awk '/ ${BUILD_STRING}: Build ${RELEASE_VERSION_ESCAPED} \(${BUILD_NUMBER}\) start/,/ ${BUILD_STRING}: Build ${RELEASE_VERSION_ESCAPED} \(${BUILD_NUMBER}\) finish$/' | \
 fi
 
 ssh ${FS_SSH_USER}@${FILESERVER} " \
@@ -54,7 +52,7 @@ ssh ${FS_SSH_USER}@${FILESERVER} " \
 # TODO(NB) Try and do this in one step, the above command should be able to copy it directly, but ssh -A isn't working for some reason.
 scp -q ${FS_SSH_USER}@${FILESERVER}:${AUTOMATED_BUILD_GZIP} .
 
-scp -q automated-build.log.gz ${FS_SSH_USER}@${FILESERVER}:/home/shared/builds/${GITHUB_OWNER}/${GITHUB_BRANCH}/debug/${RESULTS_LOG}.log.gz
+scp -q ${AUTOMATED_BUILD_GZIP} ${FS_SSH_USER}@${FILESERVER}:/home/shared/builds/${GITHUB_OWNER}/${GITHUB_BRANCH}/debug/${RESULTS_LOG}.log.gz
 
 if [ -d /tmp/teacup-artifacts-${EXECUTOR_NUMBER} ]
 then
@@ -71,9 +69,9 @@ echo "Errors in the log:"
 
 if [ -x "${WORKSPACE}"/teacup/tools/extract-errors.py ]
 then
-    zcat automated-build.log.gz | "${WORKSPACE}"/teacup/tools/extract-errors.py
+    zcat ${AUTOMATED_BUILD_GZIP} | "${WORKSPACE}"/teacup/tools/extract-errors.py
 else
-    zcat automated-build.log.gz | awk '/^Traceback \(most recent/,/^(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)/'
+    zcat ${AUTOMATED_BUILD_GZIP} | awk '/^Traceback \(most recent/,/^(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)/'
 fi
 echo
 
