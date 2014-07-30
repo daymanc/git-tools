@@ -5,8 +5,12 @@ set -e
 set -o pipefail
 
 JENKINS_CLUSTER="20"
+CLUSTER=${CLUSTER:-${JENKINS_CLUSTER}}
+EXECUTOR_NUMBER=${EXECUTOR_NUMBER:=user-$LOGNAME}
 
-if [ -z "${FILESERVER}" -o -z "${FS_SSH_USER}" -o -z "${RELEASE_VERSION}" -o -z "${GITHUB_OWNER}" -o -z "${GITHUB_BRANCH}" -o -z "${BUILD_NUMBER}" -o -z "${WORKSPACE}" ]
+if [ -z "$RELEASE_VERSION" -o -z "$BUILD_NUMBER" -o -z "$GITHUB_OWNER" -o -z "$GITHUB_BRANCH"  \
+     -o -z "$WORKSPACE" -o -z "$FILE_SERVER" -o -z "$FILE_SERVER_USER" -o -z "$SYSLOG_SERVER"  \
+     -o -z "$SYSLOG_SERVER_USER" -o -z "$CLUSTER" ]
 then
     echo "Required variable not set" >&2
     exit 1
@@ -16,49 +20,43 @@ fi
 [ "${SOURCE_VERSION}" ] && UPGRADE=1
 
 # If not defined, then we are bound to the ever-locked Jenkins cluster 20
-CLUSTER=${CLUSTER:-${JENKINS_CLUSTER}}
 BUILD_STRING="automated-build${CLUSTER}"
 CLUSTER_LOGFILE="${CLUSTER}-messages"
 AUTOMATED_BUILD_GZIP="automated-build.log.gz"
-
-EXECUTOR_NUMBER=${EXECUTOR_NUMBER:=user-$LOGNAME}
 
 SOURCE_VERSION_ESCAPED=$(echo "${SOURCE_VERSION}" | sed -e 's|\.|\\\.|g')
 RELEASE_VERSION_ESCAPED=$(echo "${RELEASE_VERSION}" | sed -e 's|\.|\\\.|g')
 
 env | sort
 
-# Push in a finish delimiter to the finished job
-nc -w0 -u ${FILESERVER} 514 <<< "${BUILD_STRING}: Build ${RELEASE_VERSION} (${BUILD_NUMBER}) finish"
+nc -w0 -u ${SYSLOG_SERVER} 514 <<< "${BUILD_STRING}: Build ${RELEASE_VERSION} (${BUILD_NUMBER}) finish"
 
 if [ "${UPGRADE}" ]
 then
     echo "NOTE: This was an Upgrade test."
     RESULTS_LOG="upgrade-test-${SOURCE_VERSION}-to-${RELEASE_VERSION}-testid-${BUILD_NUMBER}"
     TEACUP_ARTIFACTS_DIR="teacup-artifacts-${SOURCE_VERSION}-to-${RELEASE_VERSION}-testid-${BUILD_NUMBER}"
-    AWK="awk '/ ${BUILD_STRING}: Build ${SOURCE_VERSION_ESCAPED} \(${BUILD_NUMBER}\) start FLAVOR=pentos/,/ ${BUILD_STRING}: Build ${RELEASE_VERSION_ESCAPED} \(${BUILD_NUMBER}\) finish$/'"
+    AWK_VERSION_MATCH=${SOURCE_VERSION_ESCAPED}
 else
     RESULTS_LOG="functional-test-${RELEASE_VERSION}-testid-${BUILD_NUMBER}"
     TEACUP_ARTIFACTS_DIR="teacup-artifacts-${RELEASE_VERSION}-testid-${BUILD_NUMBER}"
-    AWK="awk '/ ${BUILD_STRING}: Build ${RELEASE_VERSION_ESCAPED} \(${BUILD_NUMBER}\) start/,/ ${BUILD_STRING}: Build ${RELEASE_VERSION_ESCAPED} \(${BUILD_NUMBER}\) finish$/'"
+    AWK_VERSION_MATCH=${RELEASE_VERSION_ESCAPED}
 fi
 
-ssh ${FS_SSH_USER}@${FILESERVER} " \
-    zcat /var/log/${CLUSTER_LOGFILE}.1.gz | \
+ssh "${SYSLOG_SERVER_USER}@${SYSLOG_SERVER}" \
+   "zcat /var/log/${CLUSTER_LOGFILE}.1.gz | \
     cat - /var/log/${CLUSTER_LOGFILE} | \
-    ${AWK} | \
-    gzip -c > ${AUTOMATED_BUILD_GZIP} "
+    awk '/ ${BUILD_STRING}: Build ${AWK_VERSION_MATCH} \(${BUILD_NUMBER}\) start/,/ ${BUILD_STRING}: Build ${RELEASE_VERSION_ESCAPED} \(${BUILD_NUMBER}\) finish$/' | \
+    gzip -c > ${AUTOMATED_BUILD_GZIP}"
 
-# TODO(NB) Try and do this in one step, the above command should be able to copy it directly, but ssh -A isn't working for some reason.
-scp -q ${FS_SSH_USER}@${FILESERVER}:${AUTOMATED_BUILD_GZIP} .
+scp -q ${SYSLOG_SERVER_USER}@${SYSLOG_SERVER}:${AUTOMATED_BUILD_GZIP} .
 
-scp -q ${AUTOMATED_BUILD_GZIP} ${FS_SSH_USER}@${FILESERVER}:/home/shared/builds/${GITHUB_OWNER}/${GITHUB_BRANCH}/debug/${RESULTS_LOG}.log.gz
+scp -q ${AUTOMATED_BUILD_GZIP} "${FILE_SERVER_USER}@${FILE_SERVER}:/home/shared/builds/${GITHUB_OWNER}/${GITHUB_BRANCH}/debug/${RESULTS_LOG}.log.gz"
 
-if [ -d /tmp/teacup-artifacts-${EXECUTOR_NUMBER} ]
+if [ -n "${EXECUTOR_NUMBER}" -a -d "/tmp/teacup-artifacts-${EXECUTOR_NUMBER}" ]
 then
-    rsync -rltgoD --chmod=Du=rwx,Dg=rx,Do=rx,Fu=rw,Fg=r,Fo=r /tmp/teacup-artifacts-${EXECUTOR_NUMBER}/ ${FS_SSH_USER}@${FILESERVER}:/home/shared/builds/${GITHUB_OWNER}/${GITHUB_BRANCH}/debug/${TEACUP_ARTIFACTS_DIR}/
-    # this is already run above, so this file won't appear. will appear if only run once
-    rm -rf /tmp/teacup-artifacts-${EXECUTOR_NUMBER}
+    rsync -rltgoD --chmod=Du=rwx,Dg=rx,Do=rx,Fu=rw,Fg=r,Fo=r "/tmp/teacup-artifacts-${EXECUTOR_NUMBER}/" "${FILE_SERVER_USER}@${FILE_SERVER}:/home/shared/builds/${GITHUB_OWNER}/${GITHUB_BRANCH}/debug/${TEACUP_ARTIFACTS_DIR}/"
+    rm -rf "/tmp/teacup-artifacts-${EXECUTOR_NUMBER}"
 fi
 
 set +x
@@ -77,8 +75,8 @@ echo
 
 cat <<EOF
 Options to view the log:
-http://${FILESERVER}/builds/${GITHUB_OWNER}/${GITHUB_BRANCH}/debug/${RESULTS_LOG}.log
-http://${FILESERVER}/builds/${GITHUB_OWNER}/${GITHUB_BRANCH}/debug/${RESULTS_LOG}.log.gz
-http://${FILESERVER}/builds/${GITHUB_OWNER}/${GITHUB_BRANCH}/debug/${TEACUP_ARTIFACTS_DIR}/
-scp ${FILESERVER}:/home/shared/builds/${GITHUB_OWNER}/${GITHUB_BRANCH}/debug/${RESULTS_LOG}.log.gz .
+http://${FILE_SERVER}/builds/${GITHUB_OWNER}/${GITHUB_BRANCH}/debug/${RESULTS_LOG}.log
+http://${FILE_SERVER}/builds/${GITHUB_OWNER}/${GITHUB_BRANCH}/debug/${RESULTS_LOG}.log.gz
+http://${FILE_SERVER}/builds/${GITHUB_OWNER}/${GITHUB_BRANCH}/debug/${TEACUP_ARTIFACTS_DIR}/
+scp ${FILE_SERVER}:/home/shared/builds/${GITHUB_OWNER}/${GITHUB_BRANCH}/debug/${RESULTS_LOG}.log.gz .
 EOF
